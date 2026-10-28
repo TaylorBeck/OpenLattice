@@ -13,12 +13,13 @@
     "protobufjs": "^7.3.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "resium": "^1.77.0"
+    "resium": "^1.27.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "protobufjs-cli": "^1.1.2",
     "typescript": "^5.5.3",
     "vite": "^5.3.4",
     "vite-plugin-cesium": "^1.2.22"

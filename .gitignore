@@ -1,0 +1,103 @@
+# OpenLattice Repository .gitignore
+# Stack: Go (Backend) | React + TypeScript + CesiumJS (Frontend) | Docker & Edge
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini
+
+# Linux
+*~
+.directory
+
+# IDEs & Developer Tools
+.idea/
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.settings/
+*.swp
+*.swo
+
+# VS Code (ignore user-specific state, preserve team settings/extensions if added)
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Go Backend (Binaries, Test Artifacts & Tooling)
+/bin/
+backend/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Application executable outputs
+backend/ingestion-server
+backend/threat-injector
+
+# Test and profiling artifacts
+*.test
+*.out
+*.cover
+cover.out
+coverage.html
+coverage.txt
+
+# Go module vendor directory (if generated)
+backend/vendor/
+
+# Frontend Dependencies (Node / React / Vite / TypeScript)
+node_modules/
+frontend/node_modules/
+.pnp
+.pnp.js
+
+# Build and distribution output
+dist/
+build/
+out/
+frontend/dist/
+frontend/build/
+
+# Vite, bundler, and compiler caches
+.vite/
+frontend/.vite/
+.cache/
+.parcel-cache/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Node/package manager logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment Variables & Local Secrets
+*.env
+*.env.local
+*.env.development.local
+*.env.test.local
+*.env.production.local
+.env
+.env.*
+!.env.example
+!*.env.example
+
+# Container & Deployment Local Overrides
+docker-compose.override.yml
+*.local.yml

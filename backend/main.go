@@ -10,7 +10,9 @@ import (
 
 	"github.com/TaylorBeck/openlattice/backend/internal/ingest"
 	"github.com/TaylorBeck/openlattice/backend/internal/state"
+	"github.com/TaylorBeck/openlattice/backend/pb"
 	"github.com/gorilla/websocket"
+	"google.golang.org/protobuf/proto"
 )
 
 var upgrader = websocket.Upgrader{
@@ -19,10 +21,135 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// ClientManager handles connected WebSocket clients
+// ClientManager handles connected WebSocket clients in a thread-safe manner.
 type ClientManager struct {
 	clients map[*websocket.Conn]bool
 	mutex   sync.RWMutex
+}
+
+// NewClientManager initializes an empty ClientManager.
+func NewClientManager() *ClientManager {
+	return &ClientManager{
+		clients: make(map[*websocket.Conn]bool),
+	}
+}
+
+// AddClient registers a new WebSocket client.
+func (cm *ClientManager) AddClient(conn *websocket.Conn) {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+	cm.clients[conn] = true
+}
+
+// RemoveClient unregisters and closes a WebSocket client connection.
+func (cm *ClientManager) RemoveClient(conn *websocket.Conn) {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+	if _, ok := cm.clients[conn]; ok {
+		delete(cm.clients, conn)
+		_ = conn.Close()
+	}
+}
+
+// ClientCount returns the number of active connected clients.
+func (cm *ClientManager) ClientCount() int {
+	cm.mutex.RLock()
+	defer cm.mutex.RUnlock()
+	return len(cm.clients)
+}
+
+// Broadcast sends a binary frame to all currently connected clients.
+func (cm *ClientManager) Broadcast(messageType int, payload []byte) {
+	cm.mutex.RLock()
+	conns := make([]*websocket.Conn, 0, len(cm.clients))
+	for conn := range cm.clients {
+		conns = append(conns, conn)
+	}
+	cm.mutex.RUnlock()
+
+	for _, conn := range conns {
+		_ = conn.SetWriteDeadline(time.Now().Add(500 * time.Millisecond))
+		if err := conn.WriteMessage(messageType, payload); err != nil {
+			log.Printf("[WebSocket] Broadcast error to %s: %v", conn.RemoteAddr(), err)
+			cm.RemoveClient(conn)
+		}
+	}
+}
+
+// convertTracksToPB converts internal state Tracks to Protobuf Track messages.
+func convertTracksToPB(tracks []state.Track) []*pb.Track {
+	pbTracks := make([]*pb.Track, 0, len(tracks))
+	for _, t := range tracks {
+		pbTracks = append(pbTracks, &pb.Track{
+			EntityId:       t.EntityID,
+			Class:          pb.Track_TrackClass(t.Class),
+			Latitude:       t.Latitude,
+			Longitude:      t.Longitude,
+			AltitudeMeters: t.AltitudeMeters,
+			VelocityKnots:  t.VelocityKnots,
+			HeadingDegrees: t.HeadingDegrees,
+			TimestampMs:    t.TimestampMs,
+		})
+	}
+	return pbTracks
+}
+
+// startBroadcaster runs a 100ms ticker (10Hz) that serializes the current track store
+// into a pb.TrackUpdateStream binary payload and broadcasts it over WebSockets.
+func startBroadcaster(ctx context.Context, store *state.TrackStore, manager *ClientManager) {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if manager.ClientCount() == 0 {
+				continue
+			}
+
+			tracks := store.GetAllTracks()
+			streamMsg := &pb.TrackUpdateStream{
+				Tracks: convertTracksToPB(tracks),
+			}
+
+			payload, err := proto.Marshal(streamMsg)
+			if err != nil {
+				log.Printf("[Broadcaster] Failed to marshal TrackUpdateStream: %v", err)
+				continue
+			}
+
+			manager.Broadcast(websocket.BinaryMessage, payload)
+		}
+	}
+}
+
+// streamHandler returns an http.HandlerFunc that upgrades requests to WebSockets and registers them.
+func streamHandler(manager *ClientManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Printf("[WebSocket] Upgrade error: %v", err)
+			return
+		}
+
+		manager.AddClient(conn)
+		log.Printf("[WebSocket] Client connected: %s (Active: %d)", conn.RemoteAddr(), manager.ClientCount())
+
+		// Read pump to detect disconnection and process control messages
+		go func(c *websocket.Conn) {
+			defer func() {
+				manager.RemoveClient(c)
+				log.Printf("[WebSocket] Client disconnected: %s (Active: %d)", c.RemoteAddr(), manager.ClientCount())
+			}()
+			for {
+				if _, _, err := c.NextReader(); err != nil {
+					break
+				}
+			}
+		}(conn)
+	}
 }
 
 func main() {
@@ -108,29 +235,24 @@ func main() {
 		}
 	}()
 
-	manager := &ClientManager{
-		clients: make(map[*websocket.Conn]bool),
-	}
+	manager := NewClientManager()
 
-	http.HandleFunc("/stream", func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			log.Println("WebSocket Upgrade Error:", err)
-			return
-		}
+	// 4. Start 100ms WebSocket broadcaster (10Hz)
+	go startBroadcaster(ctx, store, manager)
 
-		manager.mutex.Lock()
-		manager.clients[conn] = true
-		manager.mutex.Unlock()
-
-		log.Println("New tactical C2 client connected")
-	})
+	mux := http.NewServeMux()
+	mux.HandleFunc("/stream", streamHandler(manager))
 
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
+	server := &http.Server{
+		Addr:    ":" + port,
+		Handler: mux,
+	}
+
 	log.Printf("OpenLattice Ingestion Engine starting on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	log.Fatal(server.ListenAndServe())
 }

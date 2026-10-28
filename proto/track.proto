@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package openlattice.telemetry;
 
-option go_package = "openlattice/backend/pb";
+option go_package = "github.com/TaylorBeck/openlattice/backend/pb";
 
 // Represents a single spatial entity in the tactical environment
 message Track {
@@ -33,4 +33,15 @@ message Track {
 // The multiplexed stream sent over WebSockets
 message TrackUpdateStream {
   repeated Track tracks = 1;
+}
+
+// Acknowledgment message returned by gRPC services
+message Ack {
+  bool success = 1;
+  string message = 2;
+}
+
+// Threat injection service
+service ThreatService {
+  rpc InjectTrack (Track) returns (Ack);
 }

@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  backend:
+    build: 
+      context: ./backend
+    ports:
+      - "8080:8080" # WebSocket Stream
+      - "50051:50051" # gRPC Threat Injection
+    environment:
+      - ADSB_STREAM_URL=tcp://feed.adsbhub.org:5001
+    volumes:
+      - ./backend:/app
+      - ./proto:/proto
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_WS_URL=ws://localhost:8080/stream
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend

@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package openlattice.telemetry;
+
+option go_package = "openlattice/backend/pb";
+
+// Represents a single spatial entity in the tactical environment
+message Track {
+  string entity_id = 1;
+  
+  enum TrackClass {
+    UNKNOWN = 0;
+    CIVILIAN_AIR = 1;
+    CIVILIAN_MARITIME = 2;
+    THREAT_AIR = 3;
+    THREAT_MARITIME = 4;
+  }
+  TrackClass class = 2;
+
+  // Spatial coordinates
+  double latitude = 3;
+  double longitude = 4;
+  double altitude_meters = 5;
+
+  // Vector data
+  double velocity_knots = 6;
+  double heading_degrees = 7;
+
+  // Epoch timestamp of last known position
+  int64 timestamp_ms = 8;
+}
+
+// The multiplexed stream sent over WebSockets
+message TrackUpdateStream {
+  repeated Track tracks = 1;
+}
